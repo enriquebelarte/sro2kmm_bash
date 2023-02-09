@@ -7,21 +7,21 @@ readonly STIME=10
 # Get worker nodes
 readonly TARGET_NODES=($(oc get nodes -l node-role.kubernetes.io/worker=,node-role.kubernetes.io/infra!= --no-headers -o custom-columns=CONTAINER:.metadata.name))
 # Get Namespace
-TARGET_NS=$(oc get sr $TARGET_SR -o jsonpath='{.spec.namespace}')
+TARGET_NS=$(oc get sr "$TARGET_SR" -o jsonpath='{.spec.namespace}')
 
 #Get DS_NAME and CT_NAME from DaemonSet objects
-TARGET_DS=$(oc get ds -l specialresource.openshift.io/owned=true -n $TARGET_NS -o json | jq -r '.items[].metadata.name, .items[].spec.template.spec.containers[].name')
+TARGET_DS=$(oc get ds -l specialresource.openshift.io/owned=true -n "$TARGET_NS" -o json | jq -r '.items[].metadata.name, .items[].spec.template.spec.containers[].name')
 { read DS_NAME; read CT_NAME; } <<< "$TARGET_DS"
 
 # Make SRO unmanaged
-oc patch sr $TARGET_SR -p '{"spec":{"ManagementState": "unmanaged"}}' --type=merge
+oc patch sr "$TARGET_SR" -p '{"spec":{"ManagementState": "unmanaged"}}' --type=merge
 
 # Patch the DS to remove preStop hook
 # REVIEW as now we're patching postStart
-oc patch ds $DS_NAME -n $TARGET_NS -p '{"spec":{"updateStrategy":{"type":"OnDelete"},"template":{"spec":{"containers":[{"name":"'$CT_NAME'","lifecycle":{"preStop":{"exec":{"command":["sleep","infinity"]}}}}]}}}}'
+oc patch ds "$DS_NAME" -n "$TARGET_NS" -p '{"spec":{"updateStrategy":{"type":"OnDelete"},"template":{"spec":{"containers":[{"name":"'$CT_NAME'","lifecycle":{"preStop":{"exec":{"command":["sleep","infinity"]}}}}]}}}}'
 
 # Delete DS
-oc delete ds $DS_NAME -n $TARGET_NS
+oc delete ds "$DS_NAME" -n "$TARGET_NS"
 
 # Install additional RBAC for KMM to work with versions below 4.12
 oc apply -f restricted-v2.yaml
@@ -35,24 +35,24 @@ oc apply -f crd_kmm/
 
 # Graceful restart functions for nodes
 cordon_node(){
-  oc adm cordon $node
+  oc adm cordon "$node"
   sleep $STIME
 }
 drain_node(){
-  oc adm drain $node --ignore-daemonsets --delete-emptydir-data --force
+  oc adm drain "$node" --ignore-daemonsets --delete-emptydir-data --force
   sleep $STIME
 }
 reboot_node(){
-  cat <<EOF | oc debug node/$node
+cat <<EOF | oc debug node/"$node"
   chroot /host
   systemctl reboot
-  EOF
+EOF
 }
 
 graceful_restart(){
   cordon_node
   # Check that node is unschedulable before continuing
-  until [[ $(oc get node -o 'jsonpath={.spec.unschedulable}' $node) == "true" ]]
+  until [[ $(oc get node -o 'jsonpath={.spec.unschedulable}' "$node") == "true" ]]
   do
     echo "Waiting for node to be unschedulable..."
   done
@@ -61,11 +61,11 @@ graceful_restart(){
   reboot_node
   echo "Rebooting $node..."
   # Wait until node is Ready
-  oc wait node $node --for condition=Ready
-  oc adm uncordon $node
+  oc wait node "$node" --for condition=Ready
+  oc adm uncordon "$node"
 }
 # Make each worker node Unschedulable and drain it
-for node in ${TARGET_NODES[@]}
+for node in "${TARGET_NODES[@]}"
 do
    graceful_restart
 done
