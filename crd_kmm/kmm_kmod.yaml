@@ -1,0 +1,18 @@
+---
+apiVersion: kmm.sigs.x-k8s.io/v1beta1
+kind: Module
+metadata:
+  name: kmm-ci-a
+spec:
+  moduleLoader:
+    container:
+      modprobe:
+        moduleName: kmm-ci-a
+      kernelMappings:
+        - literal: 4.18.0-305.72.1.el8_4.x86_64
+          containerImage: image-registry.openshift-image-registry.svc:5000/kmm-kmod/kmm-kmod:4.18.0-305.72.1
+          build:
+            dockerfileConfigMap:
+              name: build-module-single
+  selector:
+    sro2kmm: 'on'

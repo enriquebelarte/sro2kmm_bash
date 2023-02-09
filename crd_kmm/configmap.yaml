@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: build-module-single
+data:
+  dockerfile: |
+    FROM quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:bdf5ad95b690fa0ca0a31690eb44be249d0c81d146ef59bca74a955aee7b92de AS builder
+    ARG KERNEL_VERSION
+    WORKDIR /build
+    RUN git clone https://github.com/rh-ecosystem-edge/kernel-module-management.git
+    WORKDIR /build/kernel-module-management/ci/kmm-kmod
+    RUN make
+    RUN mkdir -p /opt/lib/modules/${KERNEL_VERSION} && \
+        cp /build/kernel-module-management/ci/kmm-kmod/*.ko /opt/lib/modules/${KERNEL_VERSION}/
+    RUN depmod -b /opt
