@@ -1,13 +1,14 @@
 #!/bin/bash
 set -euxo
 #Special Resource to be migrated. User provided as arg.
-TARGET_SR=$1
+readonly TARGET_SR=$1
 # Sleep time(sec) after cordon and drain commands
-STIME=10
+readonly STIME=10
 # Get worker nodes
-TARGET_NODES=($(oc get nodes -l node-role.kubernetes.io/worker=,node-role.kubernetes.io/infra!= --no-headers -o custom-columns=CONTAINER:.metadata.name))
+readonly TARGET_NODES=($(oc get nodes -l node-role.kubernetes.io/worker=,node-role.kubernetes.io/infra!= --no-headers -o custom-columns=CONTAINER:.metadata.name))
 # Get Namespace
-TARGET_NS=$(oc get sr $TARGET_SR -o json | jq -r .spec.namespace)
+TARGET_NS=$(oc get sr $TARGET_SR -o jsonpath='{.spec.namespace}')
+
 #Get DS_NAME and CT_NAME from DaemonSet objects
 TARGET_DS=$(oc get ds -l specialresource.openshift.io/owned=true -n $TARGET_NS -o json | jq -r '.items[].metadata.name, .items[].spec.template.spec.containers[].name')
 { read DS_NAME; read CT_NAME; } <<< "$TARGET_DS"
@@ -34,33 +35,34 @@ oc apply -f crd_kmm/
 
 # Graceful restart functions for nodes
 cordon_node(){
-oc adm cordon $node
-sleep $STIME
+  oc adm cordon $node
+  sleep $STIME
 }
 drain_node(){
-oc adm drain $node --ignore-daemonsets --delete-emptydir-data --force
-sleep $STIME
+  oc adm drain $node --ignore-daemonsets --delete-emptydir-data --force
+  sleep $STIME
 }
 reboot_node(){
-cat <<EOF | oc debug node/$node
-chroot /host
-systemctl reboot
-EOF
+  cat <<EOF | oc debug node/$node
+  chroot /host
+  systemctl reboot
+  EOF
 }
+
 graceful_restart(){
-cordon_node
-# Check that node is unschedulable before continuing
-until [[ $(oc get node -o 'jsonpath={.spec.unschedulable}' $node) == "true" ]]
-do
-  echo "Waiting for node to be unschedulable..."
-done
-drain_node
-echo "Draining $node..."
-reboot_node
-echo "Rebooting $node..."
-# Wait until node is Ready
-oc wait node $node --for condition=Ready
-oc adm uncordon $node
+  cordon_node
+  # Check that node is unschedulable before continuing
+  until [[ $(oc get node -o 'jsonpath={.spec.unschedulable}' $node) == "true" ]]
+  do
+    echo "Waiting for node to be unschedulable..."
+  done
+  drain_node
+  echo "Draining $node..."
+  reboot_node
+  echo "Rebooting $node..."
+  # Wait until node is Ready
+  oc wait node $node --for condition=Ready
+  oc adm uncordon $node
 }
 # Make each worker node Unschedulable and drain it
 for node in ${TARGET_NODES[@]}
