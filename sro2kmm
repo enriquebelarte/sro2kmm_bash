@@ -69,9 +69,3 @@ for node in ${TARGET_NODES[@]}
 do
    graceful_restart
 done
-
-
-
-
-
-
